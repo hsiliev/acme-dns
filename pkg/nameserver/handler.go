@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/joohoi/acme-dns/pkg/acmedns"
 	"github.com/miekg/dns"
 )
 
@@ -69,6 +70,13 @@ func (n *Nameserver) answer(q dns.Question) ([]dns.RR, int, bool, error) {
 		}
 		if err == nil {
 			r = append(r, txtRRs...)
+			if len(txtRRs) > 0 {
+				acmedns.ChallengeSuccessCount.Inc()
+			} else if n.isOwnChallenge(loweredName) || n.answeringForDomain(loweredName) {
+				acmedns.ChallengeFailureCount.Inc()
+			}
+		} else if n.isOwnChallenge(loweredName) || n.answeringForDomain(loweredName) {
+			acmedns.ChallengeFailureCount.Inc()
 		}
 	}
 	if len(r) > 0 {

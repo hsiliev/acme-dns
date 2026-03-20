@@ -1,17 +1,11 @@
 FROM golang:alpine AS builder
-LABEL maintainer="joona@kuori.org"
-
-RUN apk add --update git
-
-ENV GOPATH /tmp/buildcache
-RUN git clone https://github.com/joohoi/acme-dns /tmp/acme-dns
-WORKDIR /tmp/acme-dns
-RUN CGO_ENABLED=0 go build
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o acme-dns
 
 FROM alpine:latest
-
 WORKDIR /root/
-COPY --from=builder /tmp/acme-dns .
+COPY --from=builder /app/acme-dns .
 RUN mkdir -p /etc/acme-dns
 RUN mkdir -p /var/lib/acme-dns
 RUN rm -rf ./config.cfg

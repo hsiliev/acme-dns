@@ -11,6 +11,7 @@ import (
 	"github.com/joohoi/acme-dns/pkg/acmedns"
 	"github.com/joohoi/acme-dns/pkg/database"
 	"github.com/joohoi/acme-dns/pkg/nameserver"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/caddyserver/certmagic"
@@ -81,6 +82,7 @@ func setupRouter(debug bool, noauth bool) (http.Handler, AcmednsAPI, acmedns.Acm
 	})
 	api.POST("/register", adnsapi.webRegisterPost)
 	api.GET("/health", adnsapi.healthCheck)
+	api.Handler("GET", "/metrics", promhttp.Handler())
 	if noauth {
 		api.POST("/update", noAuth(adnsapi.webUpdatePost))
 	} else {
@@ -445,7 +447,37 @@ func TestApiHealthCheck(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 	e := getExpect(t, server)
-	e.GET("/health").Expect().Status(http.StatusOK)
+	e.GET("/health").Expect().
+		Status(http.StatusOK).
+		JSON().Object().
+		Value("status").Equal("healthy")
+}
+
+func TestApiHealthCheckUnhealthy(t *testing.T) {
+	router, _, db := setupRouter(false, false)
+	server := httptest.NewServer(router)
+	defer server.Close()
+	e := getExpect(t, server)
+	oldDb := db.GetBackend()
+	mdb, mock, _ := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	db.SetBackend(mdb)
+	defer db.Close()
+	mock.ExpectPing().WillReturnError(errors.New("ping failed"))
+	e.GET("/health").Expect().
+		Status(http.StatusInternalServerError).
+		JSON().Object().
+		Value("status").Equal("unhealthy")
+	db.SetBackend(oldDb)
+}
+
+func TestApiMetrics(t *testing.T) {
+	router, _, _ := setupRouter(false, false)
+	server := httptest.NewServer(router)
+	defer server.Close()
+	e := getExpect(t, server)
+	resp := e.GET("/metrics").Expect().Status(http.StatusOK)
+	resp.Body().Contains("acmedns_challenge_success_total")
+	resp.Body().Contains("acmedns_challenge_failure_total")
 }
 
 func TestGetIPListFromHeader(t *testing.T) {

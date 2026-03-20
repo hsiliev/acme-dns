@@ -15,14 +15,46 @@ def wait_for_server():
         try:
             resp = requests.get(f"{ACMEDNS_URL}/health")
             if resp.status_code == 200:
-                print("Server is up!")
-                return True
+                data = resp.json()
+                if data.get("status") == "healthy":
+                    print("Server is up and healthy!")
+                    return True
         except:
             pass
         time.sleep(1)
     return False
 
+def test_metrics():
+    print("Testing metrics...")
+    resp = requests.get(f"{ACMEDNS_URL}/metrics")
+    if resp.status_code != 200:
+        print(f"Failed to get metrics: {resp.status_code}")
+        return False
+    
+    metrics = resp.text
+    if "acmedns_challenge_success_total" not in metrics:
+        print("Metric acmedns_challenge_success_total missing")
+        return False
+    if "acmedns_challenge_failure_total" not in metrics:
+        print("Metric acmedns_challenge_failure_total missing")
+        return False
+    print("Metrics are present")
+    return True
+
+def get_success_count():
+    resp = requests.get(f"{ACMEDNS_URL}/metrics")
+    for line in resp.text.splitlines():
+        if line.startswith("acmedns_challenge_success_total"):
+            return float(line.split()[1])
+    return 0.0
+
 def test_flow():
+    # 0. Initial metrics check
+    if not test_metrics():
+        return False
+    
+    initial_success = get_success_count()
+
     # 1. Register account
     print("Registering account...")
     resp = requests.post(f"{ACMEDNS_URL}/register")
@@ -90,6 +122,14 @@ def test_flow():
     except Exception as e:
         print(f"DNS resolution failed: {e}")
         return False
+
+    # 4. Verify metric increase
+    print("Verifying success count increase...")
+    final_success = get_success_count()
+    if final_success <= initial_success:
+        print(f"Expected success count to increase (initial: {initial_success}, final: {final_success})")
+        return False
+    print(f"Success count increased from {initial_success} to {final_success}")
 
     print("E2E Test Passed Successfully!")
     return True

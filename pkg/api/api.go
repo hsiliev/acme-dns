@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/joohoi/acme-dns/pkg/acmedns"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/caddyserver/certmagic"
 	"github.com/julienschmidt/httprouter"
@@ -50,6 +51,7 @@ func (a *AcmednsAPI) Start(dnsservers []acmedns.AcmednsNS) {
 	}
 	api.POST("/update", a.Auth(a.webUpdatePost))
 	api.GET("/health", a.healthCheck)
+	api.Handler("GET", "/metrics", promhttp.Handler())
 
 	host := a.Config.API.IP + ":" + a.Config.API.Port
 
